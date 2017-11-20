@@ -1,16 +1,16 @@
 
 import itertools
 
-DIMENSION_1 = {"white", "black"}
-DIMENSION_2 = {"hole", "solid"}
-DIMENSION_3 = {"tall", "short"}
-DIMENSION_4 = {"round", "square"}
+
+class GameError(Exception):
+    pass
 
 
-class QuatroGame:
+class QuartoGame:
 
-    def __init__(self, dimensions):
+    def __init__(self, dimensions, advanced=False):
         self.dimensions = dimensions
+        self.advanced = advanced
         self.remaining_tokens = set()
         self._finished = None
         self.reset()
@@ -22,8 +22,12 @@ class QuatroGame:
         return self._finished
 
     @property
-    def done(self):
+    def winner(self):
         return len(self.completed) != 0
+
+    @property
+    def tie(self):
+        return len(self.remaining_tokens) == 0
 
     def reset(self):
         self._finished = None
@@ -33,35 +37,48 @@ class QuatroGame:
 
     def place_token(self, token, i, j):
         if token not in self.remaining_tokens:
-            raise ValueError("That token has already been placed")
+            raise GameError("That token has already been placed")
         if self.board[i][j] is not None:
-            raise ValueError("There is already a token on that spot")
+            raise GameError("There is already a token on that spot")
         self.board[i][j] = token
+        self.remaining_tokens.remove(token)
+        self._finished = None
+
+    def __str__(self):
+        lines = ["| {} |".format(" | ".join(
+            [str(y) if y is not None else " " * len(self.dimensions) for y in x])) for x in self.board]
+        header = "+{}+".format("-" * (len(lines[0])-2))
+        return "\n".join([header, *lines, header])
+
+    def __repr__(self):
+        return str(self)
 
     def _build_board(self):
         self.board = [[None for i in range(len(self.dimensions))] for i in range(len(self.dimensions))]
 
     def _extract_tokens(self):
-        self.tokens = [QuatroToken(x) for x in itertools.product(*self.dimensions)]
+        self.tokens = [QuartoToken(x) for x in itertools.product(*self.dimensions)]
 
     def _get_finished(self):
         completed = list()
-        # Check rows
-        completed.extend(filter(lambda x: self._is_finished(x), self._get_rows()))
-        # Check Columns
-        completed.extend(filter(lambda x: self._is_finished(x), self._get_columns()))
-        # Check Diagonals
-        completed.extend(filter(lambda x: self._is_finished(x), self._get_diagonals()))
-        # Check corners
-        completed.extend(filter(lambda x: self._is_finished(x), [self._get_corners()]))
+        for structure in self._get_structures():
+            # get the first not None
+            non_nones = list(filter(None, structure))
+            if len(non_nones) > 0:
+                similarities = non_nones[0].get_similarities(non_nones)
+                if len(non_nones) == len(structure) and any(x is not None for x in similarities):
+                    completed.append(structure)
         return completed
 
-    @staticmethod
-    def _is_finished(tokens):
-        return None not in tokens and tokens[0].get_similarities(tokens) >= 1
+    def _get_structures(self):
+        if self.advanced:
+            return [*self._get_rows(), *self._get_columns(), *self._get_diagonals(), self._get_corners(),
+                    *self._get_blocks()]
+        else:
+            return [*self._get_rows(), *self._get_columns(), *self._get_diagonals()]
 
     def _get_corners(self):
-        return [self.board[i][j] for i, j in itertools.product(*[0, -1])]
+        return [self.board[i][j] for i, j in itertools.product(*[[0, -1], [0, -1]])]
 
     def _get_diagonals(self):
         diagonal1 = list()
@@ -83,24 +100,41 @@ class QuatroGame:
     def _get_column(self, i):
         return [self.board[j][i] for j in range(len(self.dimensions))]
 
+    def _get_blocks(self):
+        raise NotImplementedError("I don't know the rules for this")
 
-class QuatroToken:
+
+class QuartoToken:
 
     def __init__(self, set_dimensions):
-        self.dimensions = set(set_dimensions)
+        self.dimensions = list(set_dimensions)
 
-    def get_similarities(self, other_token):
-        if isinstance(other_token, set) or isinstance(other_token, list) or isinstance(other_token, tuple):
-            sim_set = set()
-            for other in other_token:
-                sim_set = sim_set.intersection(self._get_similarity(other))
-            return sim_set
+    def get_similarities(self, others):
+        if not isinstance(others, set) and not isinstance(others, list) and not isinstance(others, tuple):
+            others = [others]
 
-        else:
-            return self._get_similarity(other_token)
+        sim_set = self.unique_dimensions
+        for other in others:
+            sim_set = sim_set.intersection(other.unique_dimensions)
+        temp_vals = {idx: val for idx, val in sim_set}
+        return [None if i not in temp_vals else temp_vals[i] for i in range(len(self.dimensions))]
+
+    @property
+    def unique_dimensions(self):
+        return set((i, self.dimensions[i]) for i in range(len(self.dimensions)))
+
+    def __str__(self):
+        return "".join([x[0] for x in self.dimensions])
+
+    def __repr__(self):
+        return str(self)
 
     def _get_similarity(self, other):
-        return self.dimensions.intersection(other.dimensions)
+        print(set(self.dimensions).intersection(set(other.dimensions)))
+        return set(self.dimensions).intersection(set(other.dimensions))
+
+    def __hash__(self):
+        return "".join(x for x in self.dimensions).__hash__()
 
     def __eq__(self, other):
-        return self.dimensions == other.dimensions
+        return self.unique_dimensions() == other.unique_dimensions
