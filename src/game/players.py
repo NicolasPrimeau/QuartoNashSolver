@@ -16,6 +16,10 @@ class Player(ABC):
     def place_token(self, token):
         pass
 
+    @abstractmethod
+    def inform_of_outcome(self, won):
+        pass
+
 
 class HumanTerminalPlayer(Player):
 
@@ -40,6 +44,9 @@ class HumanTerminalPlayer(Player):
         print("Your tokens: {}".format(str(token)))
         location = input("Where do you want to place it? x, y: ")
         return [int(token) for token in location.strip().split(",")]
+
+    def inform_of_outcome(self, won):
+        pass
 
     @staticmethod
     def _print_tokens(tokens, numbered=False):
@@ -72,3 +79,6 @@ class RandomPlayer(Player):
                 if self.game_instance.board[i][j] is None:
                     possibilities.append((i, j))
         return random.choice(possibilities)
+
+    def inform_of_outcome(self, won):
+        pass

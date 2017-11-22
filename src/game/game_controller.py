@@ -1,14 +1,15 @@
 
 import os
 
+from game.complex_players import ReinforcedPlayer
 from game.players import HumanTerminalPlayer, RandomPlayer
 from game.quatro import QuartoGame, GameError
 
 
 class RunInstance:
 
-    PLAYER_1 = RandomPlayer
-    PLAYER_2 = RandomPlayer
+    PLAYER_1 = ReinforcedPlayer
+    PLAYER_2 = ReinforcedPlayer
     DIMENSION_1 = {"white", "black"}
     DIMENSION_2 = {"hole", "solid"}
     DIMENSION_3 = {"tall", "short"}
@@ -65,6 +66,12 @@ class GameController:
             self.playing, self.waiting = self.waiting, self.playing
         if self.verbose:
             self.footer(won=self.game.winner)
+        if self.game.winner:
+            self.waiting.inform_of_outcome(1.0)
+            self.playing.inform_of_outcome(-1.0)
+        else:
+            self.waiting.inform_of_outcome(0.0)
+            self.playing.inform_of_outcome(0.0)
         return self.waiting if self.game.winner else None
 
     def footer(self, won=True):
@@ -85,4 +92,4 @@ class GameController:
 
 
 if __name__ == "__main__":
-    RunInstance().run()
+    RunInstance(verbose=True).run()

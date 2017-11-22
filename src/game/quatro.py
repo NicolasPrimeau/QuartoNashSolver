@@ -29,6 +29,37 @@ class QuartoGame:
     def tie(self):
         return len(self.remaining_tokens) == 0
 
+    @property
+    def state(self):
+        # we don't care of the order of the sets as long as it is deterministic
+        ordered_dimensions = [list(d) for d in self.dimensions]
+        indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
+        inversed_indexed_tokens = {indexed_tokens[i]: i for i in range(len(indexed_tokens))}
+        state = [None for i in indexed_tokens]
+        for i in range(len(self.board)):
+            for j in range(len(self.board[i])):
+                if self.board[i][j] is not None:
+                    state[inversed_indexed_tokens[self.board[i][j]]] = (i, j)
+        return state
+
+    @state.setter
+    def state(self, state):
+        self.reset()
+        ordered_dimensions = [list(d) for d in self.dimensions]
+        indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
+        for i in filter(lambda idx: state[idx] is not None, range(len(state))):
+            self.place_token(indexed_tokens[i], state[i][0], state[i][1])
+
+    def get_token_unique_id(self, token):
+        ordered_dimensions = [list(d) for d in self.dimensions]
+        indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
+        return indexed_tokens.index(token)
+
+    def get_token_from_unique_id(self, unique_id):
+        ordered_dimensions = [list(d) for d in self.dimensions]
+        indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
+        return indexed_tokens[unique_id]
+
     def reset(self):
         self._finished = None
         self._build_board()
@@ -57,7 +88,7 @@ class QuartoGame:
         self.board = [[None for i in range(len(self.dimensions))] for i in range(len(self.dimensions))]
 
     def _extract_tokens(self):
-        self.tokens = [QuartoToken(x) for x in itertools.product(*self.dimensions)]
+        self.tokens = list(map(QuartoToken, itertools.product(*self.dimensions)))
 
     def _get_finished(self):
         completed = list()
@@ -137,4 +168,4 @@ class QuartoToken:
         return "".join(x for x in self.dimensions).__hash__()
 
     def __eq__(self, other):
-        return self.unique_dimensions() == other.unique_dimensions
+        return self.unique_dimensions == other.unique_dimensions
