@@ -2,6 +2,18 @@
 import itertools
 
 
+def get_token_unique_id(token, dimensions):
+    ordered_dimensions = [list(d) for d in dimensions]
+    indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
+    return indexed_tokens.index(token)
+
+
+def get_token_from_unique_id(unique_id, dimensions):
+    ordered_dimensions = [list(d) for d in dimensions]
+    indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
+    return indexed_tokens[unique_id]
+
+
 class GameError(Exception):
     pass
 
@@ -51,14 +63,10 @@ class QuartoGame:
             self.place_token(indexed_tokens[i], state[i][0], state[i][1])
 
     def get_token_unique_id(self, token):
-        ordered_dimensions = [list(d) for d in self.dimensions]
-        indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
-        return indexed_tokens.index(token)
+        return get_token_unique_id(token, self.dimensions)
 
     def get_token_from_unique_id(self, unique_id):
-        ordered_dimensions = [list(d) for d in self.dimensions]
-        indexed_tokens = list(map(QuartoToken, itertools.product(*ordered_dimensions)))
-        return indexed_tokens[unique_id]
+        return get_token_from_unique_id(unique_id, self.dimensions)
 
     def reset(self):
         self._finished = None

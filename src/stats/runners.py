@@ -2,7 +2,7 @@ import pprint
 
 from pymongo import MongoClient
 
-from game.game_controller import RunInstance
+from game.game_controller import RunInstance, get_player_type
 import argparse
 from scipy import stats
 import datetime
@@ -10,11 +10,13 @@ import datetime
 
 class StatsRunner:
 
-    def __init__(self, num_repetitions=1000, batch=None, verbose=False):
+    def __init__(self, player1_type, player2_type, num_repetitions=1000, batch=None, verbose=False):
         self.stats = dict()
         self.data = None
         self.num_repetitions = num_repetitions
         self.verbose = verbose
+        self.p1_type = player1_type
+        self.p2_type = player2_type
         if batch is None:
             batch = num_repetitions*2
         self.batch = batch
@@ -23,7 +25,8 @@ class StatsRunner:
         self.data = list()
         self.stats["repetitions"] = 0
         for i in range(self.num_repetitions):
-            self.data.append(RunInstance(verbose=self.verbose).run())
+            self.data.append(RunInstance(player1_type=self.p1_type, player2_type=self.p2_type, verbose=self.verbose)
+                             .run())
             self.stats["repetitions"] += 1
             if len(self.data) % self.batch == 0:
                 self.compute_stats()
@@ -81,12 +84,17 @@ class StatsRunner:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("-p1", "--player1-type", dest="player1", help="Player 1 type",
+                        choices=["terminal", "random", "ai"], required=False, default="ai")
+    parser.add_argument("-p2", "--player2-type", dest="player2", help="Player 2 type",
+                        choices=["terminal", "random", "ai"], required=False, default="ai")
     parser.add_argument("-r", "--repetitions", dest="repetitions", help="Number of repetitions", type=int,
                         required=False, default=100)
     parser.add_argument("-b", "--batch", dest="batch", help="Batch Size", type=int,
                         required=False, default=None)
     args = parser.parse_args()
-    runner = StatsRunner(args.repetitions, batch=args.batch)
+    runner = StatsRunner(player1_type=get_player_type(args.player1), player2_type=get_player_type(args.player2),
+                         num_repetitions=args.repetitions, batch=args.batch)
     for b in runner.run():
         print(str(runner))
     print(str(runner))

@@ -1,29 +1,39 @@
-
+import argparse
 import os
 
 from game.complex_players import ReinforcedPlayer
 from game.players import HumanTerminalPlayer, RandomPlayer
 from game.quatro import QuartoGame, GameError
 
+PLAYER_TYPE_MAP = {
+    "terminal": HumanTerminalPlayer,
+    "random": RandomPlayer,
+    "ai": ReinforcedPlayer
+}
+
+
+def get_player_type(player_type):
+    return PLAYER_TYPE_MAP[player_type]
+
 
 class RunInstance:
 
-    PLAYER_1 = ReinforcedPlayer
-    PLAYER_2 = ReinforcedPlayer
     DIMENSION_1 = {"white", "black"}
     DIMENSION_2 = {"hole", "solid"}
     DIMENSION_3 = {"tall", "short"}
     DIMENSION_4 = {"round", "square"}
 
-    def __init__(self, verbose=False):
+    def __init__(self, player1_type, player2_type, verbose=False):
+        self.p1_type = player1_type
+        self.p2_type = player2_type
         self.verbose = verbose
 
     def run(self):
         dimensions = [self.DIMENSION_1, self.DIMENSION_2, self.DIMENSION_3, self.DIMENSION_4]
         game_instance = QuartoGame(dimensions=dimensions)
         controller = GameController(game=game_instance,
-                                    player1=self.PLAYER_1("Player 1", game_instance=game_instance),
-                                    player2=self.PLAYER_2("Player 2", game_instance=game_instance),
+                                    player1=self.p1_type("Player 1", game_instance=game_instance),
+                                    player2=self.p2_type("Player 2", game_instance=game_instance),
                                     verbose=self.verbose)
         result = controller.play()
         return result.name if result is not None else "None"
@@ -45,7 +55,7 @@ class GameController:
                 self.game.place_token(token, x, y)
                 break
             except GameError as e:
-                print("That's not a proper token position, try again.\n")
+                print("That's not a proper token position, try again.\n", e)
                 x, y = self.playing.place_token(token)
 
     @staticmethod
@@ -92,4 +102,11 @@ class GameController:
 
 
 if __name__ == "__main__":
-    RunInstance(verbose=True).run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p1", "--player1-type", dest="player1", help="Player 1 type",
+                        choices=["terminal", "random", "ai"], required=False, default="ai")
+    parser.add_argument("-p2", "--player2-type", dest="player2", help="Player 2 type",
+                        choices=["terminal", "random", "ai"], required=False, default="ai")
+    args = parser.parse_args()
+    RunInstance(player1_type=PLAYER_TYPE_MAP[args.player1], player2_type=PLAYER_TYPE_MAP[args.player2], verbose=True)\
+        .run()
