@@ -1,5 +1,8 @@
 import itertools
 import random
+
+import time
+
 from game.players import Player
 from pymongo import MongoClient
 from abc import ABC, abstractmethod
@@ -29,7 +32,10 @@ class Action:
         token, i, j, returned_token = encoded_action.split(",")
         self.token = int(token)
         self.position = (int(i), int(j))
-        self.returned_token = int(returned_token)
+        try:
+            self.returned_token = int(returned_token)
+        except ValueError:
+            self.returned_token = None
 
 
 class State:

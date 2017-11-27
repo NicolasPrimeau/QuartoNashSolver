@@ -20,15 +20,22 @@ class StatsRunner:
         if batch is None:
             batch = num_repetitions*2
         self.batch = batch
+        self.run_times = list()
 
     def run(self):
         self.data = list()
         self.stats["repetitions"] = 0
         for i in range(self.num_repetitions):
+            start_time = time.time()
             self.data.append(RunInstance(player1_type=self.p1_type, player2_type=self.p2_type, verbose=self.verbose)
                              .run())
+            end_time = time.time()
+            self.run_times.append(end_time - start_time)
             self.stats["repetitions"] += 1
             if len(self.data) % self.batch == 0:
+                self.stats["timestamp"] = datetime.datetime.now()
+                self.stats["last_runtime_s"] = end_time - start_time
+                self.stats["average_runtime_s"] = sum(self.run_times) / len(self.run_times)
                 self.compute_stats()
                 self.log()
                 yield
@@ -95,6 +102,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     runner = StatsRunner(player1_type=get_player_type(args.player1), player2_type=get_player_type(args.player2),
                          num_repetitions=args.repetitions, batch=args.batch)
+    import time
     for b in runner.run():
         print(str(runner))
     print(str(runner))
