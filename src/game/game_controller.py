@@ -1,9 +1,13 @@
 import argparse
 import os
 
-from game.complex_players import ReinforcedPlayer
+from game.complex_players import ReinforcedPlayer, Cache
 from game.players import HumanTerminalPlayer, RandomPlayer
 from game.quatro import QuartoGame, GameError
+
+
+DATABASE = "Quarto"
+
 
 PLAYER_TYPE_MAP = {
     "terminal": HumanTerminalPlayer,
@@ -110,5 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("-p2", "--player2-type", dest="player2", help="Player 2 type",
                         choices=["terminal", "random", "ai"], required=False, default="ai")
     args = parser.parse_args()
-    RunInstance(player1_type=PLAYER_TYPE_MAP[args.player1], player2_type=PLAYER_TYPE_MAP[args.player2], verbose=True)\
-        .run()
+    data_cache1 = Cache(DATABASE)
+    data_cache2 = Cache(DATABASE)
+    RunInstance(player1_type=PLAYER_TYPE_MAP[args.player1], player2_type=PLAYER_TYPE_MAP[args.player2],
+                cache1=data_cache1, cache2=data_cache2, verbose=True).run()
