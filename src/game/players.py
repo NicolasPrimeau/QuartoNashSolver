@@ -4,7 +4,7 @@ import random
 
 class Player(ABC):
 
-    def __init__(self, name, game_instance):
+    def __init__(self, name, game_instance, **kwargs):
         self.name = name
         self.game_instance = game_instance
 
@@ -23,7 +23,7 @@ class Player(ABC):
 
 class HumanTerminalPlayer(Player):
 
-    def __init__(self, name, game_instance=None):
+    def __init__(self, name, game_instance=None, **kwargs):
         super().__init__(name=name, game_instance=game_instance)
 
     def print_name(self):
@@ -66,7 +66,7 @@ class HumanTerminalPlayer(Player):
 
 class RandomPlayer(Player):
 
-    def __init__(self, name, game_instance=None):
+    def __init__(self, name, game_instance=None, **kwargs):
         super().__init__(name=name, game_instance=game_instance)
 
     def choose_token(self, tokens):

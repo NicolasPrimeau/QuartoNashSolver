@@ -2,10 +2,14 @@ import pprint
 
 from pymongo import MongoClient
 
+from game.complex_players import Cache
 from game.game_controller import RunInstance, get_player_type
 import argparse
 from scipy import stats
 import datetime
+
+
+DATABASE = "Quarto"
 
 
 class StatsRunner:
@@ -23,11 +27,14 @@ class StatsRunner:
         self.run_times = list()
 
     def run(self):
+        data_cache1 = Cache(DATABASE)
+        data_cache2 = Cache(DATABASE)
         self.data = list()
         self.stats["repetitions"] = 0
         for i in range(self.num_repetitions):
             start_time = time.time()
-            self.data.append(RunInstance(player1_type=self.p1_type, player2_type=self.p2_type, verbose=self.verbose)
+            self.data.append(RunInstance(player1_type=self.p1_type, player2_type=self.p2_type,
+                                         cache1=data_cache1, cache2=data_cache2, verbose=self.verbose)
                              .run())
             end_time = time.time()
             self.run_times.append(end_time - start_time)

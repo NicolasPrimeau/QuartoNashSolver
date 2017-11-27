@@ -1,6 +1,8 @@
 import itertools
 import random
 
+import collections
+
 from game.players import Player
 from pymongo import MongoClient
 from abc import ABC, abstractmethod
@@ -14,7 +16,7 @@ class Action:
     def __init__(self, token=None, position=None, returned_token=None, value=0.0, encoded_action=None):
         if None not in (token, position, value):
             self.token = token
-            self.position = position
+            self.position = list(position)
             self.returned_token = returned_token
             self.value = value
         elif encoded_action is not None:
@@ -29,7 +31,7 @@ class Action:
     def decode(self, encoded_action):
         token, i, j, returned_token = encoded_action.split(",")
         self.token = int(token)
-        self.position = (int(i), int(j))
+        self.position = [int(i), int(j)]
         try:
             self.returned_token = int(returned_token)
         except ValueError:
@@ -132,7 +134,7 @@ class RotationTransform(StateTransform):
         state_matrix[action.position[0]][action.position[1]] = 1
         rotated_matrix = np.rot90(state_matrix, k=-self.number_of_rotations)
         token_position = np.where(rotated_matrix == 1)
-        return Action(token=action.token, position=(token_position[0][0], token_position[1][0]),
+        return Action(token=action.token, position=[token_position[0][0], token_position[1][0]],
                       returned_token=action.returned_token, value=action.value)
 
 
@@ -186,16 +188,21 @@ class Reasoning:
 
     _database = "Quarto"
 
-    def __init__(self, name, dimensions, alpha=0.1, gamma=0.95, exploration=0.05):
+    def __init__(self, name, dimensions, cache=None, alpha=0.1, gamma=0.95, exploration=0.05):
         self._collection = "{}-Memory".format(name)
         self.dimensions = dimensions
-        self.db_client = MongoClient()
+        self._cache = cache
+        self._cache.collection = self._collection
         self.alpha = alpha
         self.gamma = gamma
         self.exploration_probability = exploration
         self._state_transformation = None
         self._action_route = list()
         self._internal_state = None
+        if cache is None:
+            self._cache = Cache(database=self._database, collection=self._collection, max_keys=10000)
+        else:
+            self._cache = cache
 
     def get_action(self, game_state, given_token_id):
         self._internal_state = State(game_state, self.dimensions)
@@ -213,8 +220,9 @@ class Reasoning:
         for i in range(len(self._action_route)):
             current_state = self._action_route[i][0]
             chosen_action = self._action_route[i][1]
-            state_actions = self.db_client[self._database][self._collection].find_one(
-                {"state": self._action_route[i][2].encode()})
+
+            state_actions = self._cache.find_one(self._action_route[i][2])
+
             if state_actions is not None:
                 action_values = state_actions["action_mapping"]
                 actions = [Action(encoded_action=key, value=val) for key, val in action_values.items()]
@@ -234,9 +242,7 @@ class Reasoning:
         self._action_route.append((old_state, action, State(self._internal_state.encode(), self.dimensions)))
 
     def _update_action_mapping(self, state, action):
-        self.db_client[self._database][self._collection]\
-            .update_one({"state": state.encode()},
-                        {"$set": {"action_mapping.{}".format(action.encode()): action.value}})
+        self._cache.update(state, action)
 
     def _get_possible_actions(self):
         remaining = set()
@@ -252,13 +258,13 @@ class Reasoning:
         chosen_token = self._internal_state.get_chosen_token()
         for cell in free_cells:
             for token in remaining:
-                possible_actions.append(Action(chosen_token, cell, token))
+                possible_actions.append(Action(chosen_token, list(cell), token))
         if len(possible_actions) == 0:
             possible_actions.append(Action(chosen_token, list(free_cells)[0], None))
         return possible_actions
 
     def _init_state_value_mapping(self, value_mapping):
-        self.db_client[self._database][self._collection].insert({
+        self._cache.insert_data(self._internal_state, {
             "state": self._internal_state.encode(),
             "action_mapping": {action.encode(): action.value for action in value_mapping}
         })
@@ -271,8 +277,8 @@ class Reasoning:
         equivalent_states = [(transform, transform.transform_state(state))
                              for transform in state.iterate_transformations()]
 
-        matched = self.db_client[self._database][self._collection].find_one({
-            "state": {"$in": list(map(lambda x: x[1].encode(), equivalent_states))}})
+        matched = self._cache.find_one_multistate(list(map(lambda x: x[1], equivalent_states)))
+
         if matched is None:
             return state, None
         else:
@@ -284,8 +290,7 @@ class Reasoning:
         return random.choice(self._get_action_values())
 
     def _get_action_values(self):
-        state_actions = self.db_client[self._database][self._collection].find_one(
-            {"state": self._internal_state.encode()})
+        state_actions = self._cache.find_one(self._internal_state)
 
         if state_actions is None:
             actions = self._get_possible_actions()
@@ -296,13 +301,86 @@ class Reasoning:
         return actions
 
 
+class Cache:
+
+    def __init__(self, database, collection=None, max_keys=100000):
+        self.max_keys = max_keys
+        self.database = database
+        self.collection = collection
+        self._storage = dict()
+        self._delete_queue = collections.deque()
+        self.db_client = MongoClient()
+
+    def find_one(self, state):
+        return self.find_one_multistate([state])
+
+    def find_one_multistate(self, multistates):
+        states = [self._listify(state) for state in multistates]
+        for state in states:
+            key = self._tupleify(state)
+            if key in self._storage:
+                return self._storage[key]
+
+        data = self.db_client[self.database][self.collection].find_one(
+            {"state": {"$in": list(map(lambda x: x.encode(), states))}})
+
+        if data is None:
+            return None
+        for query_state in states:
+            if query_state.encode() == data["state"]:
+                self.add_data(query_state, data)
+                return data
+
+    def _listify(self, state):
+        statex = list()
+        for x in state.encode():
+            if isinstance(x, tuple):
+                statex.append(list(x))
+            else:
+                statex.append(x)
+        return State(statex, state.dimensions)
+
+    def _tupleify(self, state):
+        key = list(state.encode())
+        for i in range(len(key)):
+            if isinstance(key[i], list):
+                key[i] = tuple(key[i])
+        return tuple(key)
+
+    def add_data(self, state, data):
+        key = self._tupleify(state)
+        self._storage[key] = data
+        self._clean()
+
+    def reset_state(self, state):
+        key = self._tupleify(state)
+        try:
+            self._delete_queue.remove(key)
+        except ValueError:
+            pass
+        self._delete_queue.append(key)
+
+    def insert_data(self, state, data):
+        self.db_client[self.database][self.collection].insert(data)
+        self.add_data(state, data)
+
+    def update(self, state, action):
+        self.db_client[self.database][self.collection].update_one({"state": state.encode()},
+                        {"$set": {"action_mapping.{}".format(action.encode()): action.value}})
+        self.find_one(state)["action_mapping"][action.encode()] = action.value
+        self.reset_state(state)
+
+    def _clean(self):
+        while len(self._storage) > self.max_keys:
+            key = self._delete_queue.popleft()
+            del self._storage[key]
+
+
 class ReinforcedPlayer(Player):
 
-    _database = "Quarto"
-
-    def __init__(self, name, game_instance=None):
+    def __init__(self, name, game_instance=None, cache=None, **kwargs):
         super().__init__(name=name, game_instance=game_instance)
-        self.reasoner = Reasoning(name, dimensions=game_instance.dimensions)
+        self.reasoner = Reasoning(name, dimensions=game_instance.dimensions, cache=cache)
         self._action = None
 
     def place_token(self, token):

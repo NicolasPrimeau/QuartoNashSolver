@@ -23,17 +23,19 @@ class RunInstance:
     DIMENSION_3 = {"tall", "short"}
     DIMENSION_4 = {"round", "square"}
 
-    def __init__(self, player1_type, player2_type, verbose=False):
+    def __init__(self, player1_type, player2_type, cache1=None, cache2=None, verbose=False):
         self.p1_type = player1_type
         self.p2_type = player2_type
         self.verbose = verbose
+        self.cache1 = cache1
+        self.cache2 = cache2
 
     def run(self):
         dimensions = [self.DIMENSION_1, self.DIMENSION_2, self.DIMENSION_3, self.DIMENSION_4]
         game_instance = QuartoGame(dimensions=dimensions)
         controller = GameController(game=game_instance,
-                                    player1=self.p1_type("Player 1", game_instance=game_instance),
-                                    player2=self.p2_type("Player 2", game_instance=game_instance),
+                                    player1=self.p1_type("Player 1", game_instance=game_instance, cache=self.cache1),
+                                    player2=self.p2_type("Player 2", game_instance=game_instance, cache=self.cache2),
                                     verbose=self.verbose)
         result = controller.play()
         return result.name if result is not None else "None"
