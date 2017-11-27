@@ -1,8 +1,6 @@
 import itertools
 import random
 
-import time
-
 from game.players import Player
 from pymongo import MongoClient
 from abc import ABC, abstractmethod
@@ -270,13 +268,17 @@ class Reasoning:
 
     def _disambiguate_state(self, state=None):
         state = state if state is not None else self._internal_state
-        for transformation in state.iterate_transformations():
-            state_transformation = transformation
-            equivalent_state = transformation.transform_state(state)
-            matched = self.db_client[self._database][self._collection].count({"state": equivalent_state.encode()})
-            if matched == 1:
-                return equivalent_state, state_transformation
-        return state, None
+        equivalent_states = [(transform, transform.transform_state(state))
+                             for transform in state.iterate_transformations()]
+
+        matched = self.db_client[self._database][self._collection].find_one({
+            "state": {"$in": list(map(lambda x: x[1].encode(), equivalent_states))}})
+        if matched is None:
+            return state, None
+        else:
+            for transform, transformed_state in equivalent_states:
+                if transformed_state.encode() == matched["state"]:
+                    return transformed_state, transform
 
     def _get_random_action(self):
         return random.choice(self._get_action_values())
