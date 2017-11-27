@@ -1,10 +1,8 @@
 import itertools
 import random
 
-import collections
-
 from game.players import Player
-from pymongo import MongoClient
+from pymongo import MongoClient, ReplaceOne
 from abc import ABC, abstractmethod
 import numpy as np
 
@@ -192,7 +190,8 @@ class Reasoning:
         self._collection = "{}-Memory".format(name)
         self.dimensions = dimensions
         self._cache = cache
-        self._cache.collection = self._collection
+        if self._cache.collection is None:
+            self._cache.collection = self._collection
         self.alpha = alpha
         self.gamma = gamma
         self.exploration_probability = exploration
@@ -200,7 +199,7 @@ class Reasoning:
         self._action_route = list()
         self._internal_state = None
         if cache is None:
-            self._cache = Cache(database=self._database, collection=self._collection, max_keys=10000)
+            self._cache = Cache(database=self._database, collection=self._collection)
         else:
             self._cache = cache
 
@@ -303,45 +302,46 @@ class Reasoning:
 
 class Cache:
 
-    def __init__(self, database, collection=None, max_keys=100000):
-        self.max_keys = max_keys
+    def __init__(self, database, collection=None):
         self.database = database
-        self.collection = collection
+        self._collection = collection
         self._storage = dict()
-        self._delete_queue = collections.deque()
         self.db_client = MongoClient()
+
+    @property
+    def collection(self):
+        return self._collection
+
+    @collection.setter
+    def collection(self, value):
+        self._collection = value
+        self.load()
 
     def find_one(self, state):
         return self.find_one_multistate([state])
 
-    def find_one_multistate(self, multistates):
-        states = [self._listify(state) for state in multistates]
+    def find_one_multistate(self, states):
         for state in states:
             key = self._tupleify(state)
             if key in self._storage:
                 return self._storage[key]
-
-        data = self.db_client[self.database][self.collection].find_one(
-            {"state": {"$in": list(map(lambda x: x.encode(), states))}})
-
-        if data is None:
-            return None
-        for query_state in states:
-            if query_state.encode() == data["state"]:
-                self.add_data(query_state, data)
-                return data
+        return None
 
     def _listify(self, state):
+        if isinstance(state, State):
+            state = state.encode()
         statex = list()
-        for x in state.encode():
+        for x in state:
             if isinstance(x, tuple):
                 statex.append(list(x))
             else:
                 statex.append(x)
-        return State(statex, state.dimensions)
+        return statex
 
     def _tupleify(self, state):
-        key = list(state.encode())
+        if isinstance(state, State):
+            state = state.encode()
+        key = list(state)
         for i in range(len(key)):
             if isinstance(key[i], list):
                 key[i] = tuple(key[i])
@@ -350,30 +350,23 @@ class Cache:
     def add_data(self, state, data):
         key = self._tupleify(state)
         self._storage[key] = data
-        self._clean()
-
-    def reset_state(self, state):
-        key = self._tupleify(state)
-        try:
-            self._delete_queue.remove(key)
-        except ValueError:
-            pass
-        self._delete_queue.append(key)
 
     def insert_data(self, state, data):
-        self.db_client[self.database][self.collection].insert(data)
         self.add_data(state, data)
 
     def update(self, state, action):
-        self.db_client[self.database][self.collection].update_one({"state": state.encode()},
-                        {"$set": {"action_mapping.{}".format(action.encode()): action.value}})
         self.find_one(state)["action_mapping"][action.encode()] = action.value
-        self.reset_state(state)
 
-    def _clean(self):
-        while len(self._storage) > self.max_keys:
-            key = self._delete_queue.popleft()
-            del self._storage[key]
+    def load(self):
+        for item in self.db_client[self.database][self.collection].find():
+            key = self._tupleify(item["state"])
+            self._storage[key] = item
+
+    def save(self):
+        ops = list()
+        for key in self._storage:
+            ops.append(ReplaceOne({"state": self._listify(key)}, self._storage[key]))
+        self.db_client[self.database][self.collection].bulk_write(ops, ordered=False)
 
 
 class ReinforcedPlayer(Player):
