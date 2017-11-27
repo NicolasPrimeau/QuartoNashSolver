@@ -34,7 +34,7 @@ class StatsRunner:
             self.stats["repetitions"] += 1
             if len(self.data) % self.batch == 0:
                 self.stats["timestamp"] = datetime.datetime.now()
-                self.stats["last_runtime_s"] = end_time - start_time
+                self.stats["last_runtime_s"] = self.run_times[-1]wwwww
                 self.stats["average_runtime_s"] = sum(self.run_times) / len(self.run_times)
                 self.compute_stats()
                 self.log()
