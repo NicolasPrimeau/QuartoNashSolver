@@ -54,14 +54,21 @@ class GameController:
         self.verbose = verbose
 
     def turn(self):
-        token = self.waiting.choose_token(self.game.remaining_tokens)
+        while True:
+            token = self.waiting.choose_token(self.game.remaining_tokens)
+            if token in self.game.remaining_tokens:
+                break
+            else:
+                msg = "That token has is placed ({}), Chose another in {}".format(token, self.game.remaining_tokens)
+                print(msg)
         x, y = self.playing.place_token(token)
         while True:
             try:
                 self.game.place_token(token, x, y)
                 break
             except GameError as e:
-                print("That's not a proper token position, try again.\n", e)
+                msg = "That's not a an acceptable action ({} -> {}, {}), try again.".format(token, x, y)
+                print(msg, e)
                 x, y = self.playing.place_token(token)
 
     @staticmethod
@@ -74,6 +81,8 @@ class GameController:
         if self.verbose:
             self.header()
             first = True
+        else:
+            first = False
         while not self.game.winner and not self.game.tie:
             if self.verbose:
                 self.print_game_board(clear=not first)

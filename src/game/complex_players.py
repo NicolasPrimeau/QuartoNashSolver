@@ -16,12 +16,20 @@ class Action:
             self.token = token
             self.position = list(position)
             self.returned_token = returned_token
-            self.value = value
+            self._value = value
         elif encoded_action is not None:
             self.decode(encoded_action)
-            self.value = value
+            self._value = value
         else:
             raise ValueError("Don't do that")
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, val):
+        self._value = sorted([-1, val, 1])[1]
 
     def encode(self):
         return "{},{},{},{}".format(self.token, self.position[0], self.position[1], self.returned_token)
@@ -124,14 +132,23 @@ class RotationTransform(StateTransform):
         for i in range(len(encoded_state)):
             row = int(i/self.dim)
             col = i % self.dim
-            state_matrix[row][col] = encoded_state[i]
-        return State(np.rot90(m=state_matrix, k=self.number_of_rotations).flatten().tolist(), state.dimensions)
+            state_matrix[row][col] = i
+        rotated_matrix = np.rot90(m=state_matrix, k=self.number_of_rotations)
+        new_state = [None for i in range(len(encoded_state))]
+        for i in range(len(new_state)):
+            token_position = np.where(rotated_matrix == i)
+            if token_position is len(token_position[0]) == 1:
+                new_state[i] = (token_position[0][0], token_position[1][0])
+        return State(new_state, state.dimensions)
 
     def transform_action(self, action):
         state_matrix = [[0 for i in range(self.dim)] for j in range(self.dim)]
         state_matrix[action.position[0]][action.position[1]] = 1
         rotated_matrix = np.rot90(state_matrix, k=-self.number_of_rotations)
         token_position = np.where(rotated_matrix == 1)
+
+        x = Action(token=action.token, position=[token_position[0][0], token_position[1][0]],
+                      returned_token=action.returned_token, value=action.value)
         return Action(token=action.token, position=[token_position[0][0], token_position[1][0]],
                       returned_token=action.returned_token, value=action.value)
 
@@ -150,6 +167,7 @@ class PermutationTransform(StateTransform):
             new_token = self._transform_token(get_token_from_unique_id(token_id, self.dimensions))
             new_token_id = get_token_unique_id(new_token, self.dimensions)
             new_status = state.get_token_id_status(new_token_id)
+            encoded_state[new_token_id] = new_status
         return State(encoded_state, self.dimensions)
 
     def _transform_token(self, token):
@@ -164,11 +182,10 @@ class PermutationTransform(StateTransform):
 
     def transform_action(self, action):
         token_id = get_token_unique_id(
-            self._inverse_transform_token(get_token_unique_id(action.chosen, self.dimensions)),
-            self.dimensions)
-        returned_token_id = get_token_unique_id(
-            self._inverse_transform_token(get_token_unique_id(action.returned_token, self.dimensions)),
-            self.dimensions)
+            self._inverse_transform_token(get_token_from_unique_id(action.token, self.dimensions)), self.dimensions)
+        returned_token_id = get_token_unique_id(self._inverse_transform_token(
+                get_token_from_unique_id(action.returned_token, self.dimensions)),self.dimensions)
+        x = Action(token=token_id, position=action.position, returned_token=returned_token_id, value=action.value)
         return Action(token=token_id, position=action.position, returned_token=returned_token_id, value=action.value)
 
     def _inverse_transform_token(self, token):
@@ -178,7 +195,7 @@ class PermutationTransform(StateTransform):
         permuted_token_dimensions = [(indexed_token_dimensions[i] - self.permutation[i])
                                      for i in range(len(self.dimensions))]
         permuted_token = QuartoToken(tuple(ordered_dimensions[i][permuted_token_dimensions[i]]
-                                           for i in permuted_token_dimensions))
+                                           for i in range(len(permuted_token_dimensions))))
         return permuted_token
 
 
@@ -205,6 +222,7 @@ class Reasoning:
 
     def get_action(self, game_state, given_token_id):
         self._internal_state = State(game_state, self.dimensions)
+        self._state_transformation = None
         self._internal_state.set_token_as_given(given_token_id)
         # If they're equal, we don't care
         self._internal_state, self._state_transformation = self._disambiguate_state()
@@ -365,7 +383,7 @@ class Cache:
     def save(self):
         ops = list()
         for key in self._storage:
-            ops.append(ReplaceOne({"state": self._listify(key)}, self._storage[key]))
+            ops.append(ReplaceOne({"state": self._listify(key)}, self._storage[key], upsert=True))
         self.db_client[self.database][self.collection].bulk_write(ops, ordered=False)
 
 

@@ -58,7 +58,7 @@ class StatsRunner:
 
     def log(self):
         client = MongoClient()
-        client["Quarto"]["stats"].insert(
+        client[DATABASE]["stats"].insert(
             {
                 "time": datetime.datetime.now(),
                 "stats": self.stats
