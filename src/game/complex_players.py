@@ -2,7 +2,7 @@ import itertools
 import random
 
 from game.core_elements import State, Action
-from game.database_utils import Cache
+from game.database_utils import DBInterface
 from game.players import Player
 
 
@@ -10,22 +10,16 @@ class Reasoning:
 
     _database = "Quarto"
 
-    def __init__(self, name, dimensions, cache=None, alpha=0.1, gamma=0.95, exploration=0.05):
+    def __init__(self, name, dimensions, alpha=0.1, gamma=0.95, exploration=0.05):
         self._collection = "{}-Memory".format(name)
         self.dimensions = dimensions
-        self._cache = cache
-        if self._cache.collection is None:
-            self._cache.collection = self._collection
+        self._database_interface = DBInterface(self._database, self._collection)
         self.alpha = alpha
         self.gamma = gamma
         self.exploration_probability = exploration
         self._state_transformation = None
         self._action_route = list()
         self._internal_state = None
-        if cache is None:
-            self._cache = Cache(database=self._database, collection=self._collection)
-        else:
-            self._cache = cache
 
     def get_action(self, game_state, given_token_id):
         self._internal_state = State(game_state, self.dimensions)
@@ -45,7 +39,7 @@ class Reasoning:
             current_state = self._action_route[i][0]
             chosen_action = self._action_route[i][1]
 
-            state_actions = self._cache.find_one(self._action_route[i][2])
+            state_actions = self._database_interface.find_one(self._action_route[i][2])
 
             if state_actions is not None:
                 action_values = state_actions["action_mapping"]
@@ -66,7 +60,7 @@ class Reasoning:
         self._action_route.append((old_state, action, State(self._internal_state.encode(), self.dimensions)))
 
     def _update_action_mapping(self, state, action):
-        self._cache.update(state, action)
+        self._database_interface.update(state, action)
 
     def _get_possible_actions(self):
         remaining = set()
@@ -88,7 +82,7 @@ class Reasoning:
         return possible_actions
 
     def _init_state_value_mapping(self, value_mapping):
-        self._cache.insert_data(self._internal_state, value_mapping)
+        self._database_interface.insert_data(self._internal_state, value_mapping)
 
     def _get_best_action(self):
         return max(self._get_action_values(), key=lambda action: action.value)
@@ -98,7 +92,7 @@ class Reasoning:
         equivalent_states = [(transform, transform.transform_state(state))
                              for transform in state.iterate_transformations()]
 
-        matched = self._cache.find_one_multistate(list(map(lambda x: x[1], equivalent_states)))
+        matched = self._database_interface.find_one_multistate(list(map(lambda x: x[1], equivalent_states)))
 
         if matched is None:
             return state, None
@@ -111,7 +105,7 @@ class Reasoning:
         return random.choice(self._get_action_values())
 
     def _get_action_values(self):
-        state_actions = self._cache.find_one(self._internal_state)
+        state_actions = self._database_interface.find_one(self._internal_state)
 
         if state_actions is None:
             actions = self._get_possible_actions()
@@ -124,9 +118,9 @@ class Reasoning:
 
 class ReinforcedPlayer(Player):
 
-    def __init__(self, name, game_instance=None, cache=None, **kwargs):
+    def __init__(self, name, game_instance=None, **kwargs):
         super().__init__(name=name, game_instance=game_instance)
-        self.reasoner = Reasoning(name, dimensions=game_instance.dimensions, cache=cache)
+        self.reasoner = Reasoning(name, dimensions=game_instance.dimensions)
         self._action = None
 
     def place_token(self, token):

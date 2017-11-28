@@ -2,7 +2,6 @@ import pprint
 
 from pymongo import MongoClient
 
-from game.complex_players import Cache
 from game.game_controller import RunInstance, get_player_type
 import argparse
 from scipy import stats
@@ -25,18 +24,13 @@ class StatsRunner:
             batch = num_repetitions*2
         self.batch = batch
         self.run_times = list()
-        self.data_cache1 = None
-        self.data_cache2 = None
 
     def run(self):
-        self.data_cache1 = Cache(DATABASE)
-        self.data_cache2 = Cache(DATABASE)
         self.data = list()
         self.stats["repetitions"] = 0
         for i in range(self.num_repetitions):
             start_time = time.time()
-            self.data.append(RunInstance(player1_type=self.p1_type, player2_type=self.p2_type,
-                                         cache1=self.data_cache1, cache2=self.data_cache2, verbose=self.verbose)
+            self.data.append(RunInstance(player1_type=self.p1_type, player2_type=self.p2_type, verbose=self.verbose)
                              .run())
             end_time = time.time()
             self.run_times.append(end_time - start_time)
@@ -47,14 +41,9 @@ class StatsRunner:
                 self.stats["average_runtime_s"] = sum(self.run_times) / len(self.run_times)
                 self.compute_stats()
                 self.log()
-                self.store_caches()
                 yield
         self.compute_stats()
         self.log()
-
-    def store_caches(self):
-        self.data_cache1.save()
-        self.data_cache2.save()
 
     def log(self):
         client = MongoClient()

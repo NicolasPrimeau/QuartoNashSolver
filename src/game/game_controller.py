@@ -1,7 +1,7 @@
 import argparse
 import os
 
-from game.complex_players import ReinforcedPlayer, Cache
+from game.complex_players import ReinforcedPlayer
 from game.players import HumanTerminalPlayer, RandomPlayer
 from game.quatro import QuartoGame, GameError
 
@@ -27,19 +27,17 @@ class RunInstance:
     DIMENSION_3 = {"tall", "short"}
     DIMENSION_4 = {"round", "square"}
 
-    def __init__(self, player1_type, player2_type, cache1=None, cache2=None, verbose=False):
+    def __init__(self, player1_type, player2_type, verbose=False):
         self.p1_type = player1_type
         self.p2_type = player2_type
         self.verbose = verbose
-        self.cache1 = cache1
-        self.cache2 = cache2
 
     def run(self):
         dimensions = [self.DIMENSION_1, self.DIMENSION_2, self.DIMENSION_3, self.DIMENSION_4]
         game_instance = QuartoGame(dimensions=dimensions)
         controller = GameController(game=game_instance,
-                                    player1=self.p1_type("Player 1", game_instance=game_instance, cache=self.cache1),
-                                    player2=self.p2_type("Player 2", game_instance=game_instance, cache=self.cache2),
+                                    player1=self.p1_type("Player 1", game_instance=game_instance),
+                                    player2=self.p2_type("Player 2", game_instance=game_instance),
                                     verbose=self.verbose)
         result = controller.play()
         return result.name if result is not None else "None"
@@ -123,7 +121,5 @@ if __name__ == "__main__":
     parser.add_argument("-p2", "--player2-type", dest="player2", help="Player 2 type",
                         choices=["terminal", "random", "ai"], required=False, default="ai")
     args = parser.parse_args()
-    data_cache1 = Cache(DATABASE)
-    data_cache2 = Cache(DATABASE)
     RunInstance(player1_type=PLAYER_TYPE_MAP[args.player1], player2_type=PLAYER_TYPE_MAP[args.player2],
-                cache1=data_cache1, cache2=data_cache2, verbose=True).run()
+                verbose=True).run()

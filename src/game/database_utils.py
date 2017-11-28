@@ -1,6 +1,32 @@
 from pymongo import MongoClient, ReplaceOne
 
 
+class DBInterface:
+
+    def __init__(self, database, collection=None):
+        self.database = database
+        self.collection = collection
+        self.db_client = MongoClient()
+
+    def find_one(self, state):
+        return self.db_client[self.database][self.collection].find_one({"state_key": state.key})
+
+    def find_one_multistate(self, states):
+        keys = [state.key for state in states]
+        return self.db_client[self.database][self.collection].find_one({"state_key": {"$in": keys}})
+
+    def insert_data(self, state, value_mapping):
+        item = {"state_key": state.key, "state": state.encode(),
+                "action_mapping": {action.encode(): action.value for action in value_mapping}}
+        self.db_client[self.database][self.collection].replace_one({"state_key": state.key}, item, upsert=True)
+
+    def update(self, state, action):
+        key = state.key
+        self.db_client[self.database][self.collection].update_one({"state_key": key}, {"$set": {
+            "action_mapping.{}".format(action.encode()): action.value
+        }})
+
+
 class Cache:
 
     def __init__(self, database, collection=None):
