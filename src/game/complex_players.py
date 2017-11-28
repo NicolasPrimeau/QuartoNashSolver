@@ -1,8 +1,12 @@
 import itertools
 import random
 
+import asyncio
+
 from game.players import Player
-from pymongo import MongoClient, ReplaceOne
+
+from motor.motor_asyncio import AsyncIOMotorClient
+
 from abc import ABC, abstractmethod
 import numpy as np
 
@@ -324,7 +328,7 @@ class Cache:
         self.database = database
         self._collection = collection
         self._storage = dict()
-        self.db_client = MongoClient()
+        self.db_client = AsyncIOMotorClient()
 
     @property
     def collection(self):
@@ -376,15 +380,24 @@ class Cache:
         self.find_one(state)["action_mapping"][action.encode()] = action.value
 
     def load(self):
-        for item in self.db_client[self.database][self.collection].find():
-            key = self._tupleify(item["state"])
-            self._storage[key] = item
+        async def load_items():
+            async for item in self.db_client[self.database][self.collection].find():
+                key = self._tupleify(item["state"])
+                self._storage[key] = item
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(load_items())
 
     def save(self):
-        ops = list()
-        for key in self._storage:
-            ops.append(ReplaceOne({"state": self._listify(key)}, self._storage[key], upsert=True))
-        self.db_client[self.database][self.collection].bulk_write(ops, ordered=False)
+        async def get_keys():
+            for key in self._storage.keys():
+                yield key
+
+        async def update_item():
+            db = self.db_client[self.database]
+            async for key in get_keys():
+                db[self.collection].update_one({"state": self._listify(key)}, self._storage[key], upsert=True)
+        loop = asyncio.get_event_loop()
+        loop.create_task(update_item)
 
 
 class ReinforcedPlayer(Player):
