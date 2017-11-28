@@ -82,7 +82,7 @@ class State:
 
     def iterate_transformations(self):
         dim = len(self.dimensions)
-        dim_possibilities = [[i for i in range(len(self.dimensions[j]) -1)] for j in range(len(self.dimensions))]
+        dim_possibilities = [[i for i in range(len(self.dimensions[j]))] for j in range(len(self.dimensions))]
         for permutation in itertools.product(*dim_possibilities):
             for rotation in range(0, 4):
                 yield ChainTransform((PermutationTransform(permutation, self.dimensions),
@@ -171,7 +171,7 @@ class PermutationTransform(StateTransform):
         ordered_dimensions = [list(d) for d in self.dimensions]
         indexed_token_dimensions = [ordered_dimensions[i].index(token.dimensions[i])
                                     for i in range(len(self.dimensions))]
-        permuted_token_dimensions = [(indexed_token_dimensions[i] + self.permutation[i])
+        permuted_token_dimensions = [(indexed_token_dimensions[i] + self.permutation[i]) % len(ordered_dimensions[i])
                                      for i in range(len(self.dimensions))]
         permuted_token = QuartoToken(tuple(ordered_dimensions[i][permuted_token_dimensions[i]]
                                            for i in range(len(permuted_token_dimensions))))
