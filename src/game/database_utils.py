@@ -1,7 +1,10 @@
 from pymongo import MongoClient, ReplaceOne
 
+import game.core_elements
+from game.core_elements import State
 
-class DBInterface:
+
+class StateDBInterface:
 
     def __init__(self, database, collection=None):
         self.database = database
@@ -27,54 +30,83 @@ class DBInterface:
         }})
 
 
-class Cache:
+class StateCache:
 
     def __init__(self, database, collection=None):
         self.database = database
-        self._collection = collection
+        self.collection = collection
         self._storage = dict()
         self.db_client = MongoClient()
 
-    @property
-    def collection(self):
-        return self._collection
-
-    @collection.setter
-    def collection(self, value):
-        self._collection = value
-        self.load()
-
     def find_one(self, state):
-        return self.find_one_multistate([state])
+        if state.key not in self._storage:
+            item = self.db_client[self.database][self.collection].find_one({"state_key": state.key})
+            if item is not None:
+                self._storage[state.key] = item
+            else:
+                return None
+        return self._storage[state.key]
 
     def find_one_multistate(self, states):
-        for state in states:
-            key = state.key
+        keys = [state.key for state in states]
+        for key in keys:
             if key in self._storage:
                 return self._storage[key]
-        return None
-
-    def add_data(self, state, data):
-        self._storage[state.key] = data
+        item = self.db_client[self.database][self.collection].find_one({"state_key": {"$in": keys}})
+        if item is not None:
+            self._storage[item.key] = item
+            return item
+        else:
+            return None
 
     def insert_data(self, state, value_mapping):
         item = {"state_key": state.key, "state": state.encode(),
                 "action_mapping": {action.encode(): action.value for action in value_mapping}}
-        self.add_data(state, item)
+        self.db_client[self.database][self.collection].replace_one({"state_key": state.key}, item, upsert=True)
+        self._storage[state.key] = item
 
     def update(self, state, action):
         self.find_one(state)["action_mapping"][action.encode()] = action.value
-        key = state.key
-        self.db_client[self.database][self.collection].update_one({"state_key": key}, {"$set": {
-            "action_mapping.{}".format(action.encode): action.value
+        self.db_client[self.database][self.collection].update_one({"state_key": state.key}, {"$set": {
+            "action_mapping.{}".format(action.encode()): action.value
         }})
 
-    def load(self):
-        for item in self.db_client[self.database][self.collection].find():
-            self._storage[item["state_key"]] = item
 
-    def save(self):
-        pass
+class StateEquivalencyCache:
+
+    def __init__(self, database, collection=None):
+        self.database = database
+        self.collection = collection
+        self._storage = dict()
+        self.db_client = MongoClient()
+
+    def find_one(self, state):
+        if state.key not in self._storage:
+            item = self.db_client[self.database][self.collection].find_one({"state_key": state.key})
+            if item is not None:
+                self._storage[state.key] = item
+            else:
+                return None, None
+        equivalent_state = State(self._storage[state.key]["state"], state.dimensions)
+        transform_type = self._storage[state.key]["transform_type"]
+        if transform_type is not None:
+            transform_type = getattr(game.core_elements, transform_type)
+            transform = transform_type(encoded=self._storage[state.key]["transform_parameters"])
+        else:
+            transform = None
+        return equivalent_state, transform
+
+    def insert_data(self, state, transformed_state, transform):
+        item = {
+            "state_key": state.key,
+            "state": state.encode(),
+            "transformed_state_key": transformed_state.key,
+            "transformed_state": transformed_state.encode(),
+            "transform_parameters": None if transform is None else transform.encode(),
+            "transform_type": None if transform is None else type(transform)
+        }
+        self.db_client[self.database][self.collection].replace_one({"state_key": state.key}, item, upsert=True)
+        self._storage[state.key] = item
 
 
 class DatabaseUpdater:

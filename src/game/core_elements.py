@@ -1,6 +1,8 @@
 import itertools
 from abc import ABC, abstractmethod
 
+import sys
+
 from game.quatro import get_token_from_unique_id, get_token_unique_id, QuartoToken
 import numpy as np
 
@@ -45,7 +47,7 @@ class State:
     _given_token_indicator = "Given"
 
     def __init__(self, state, dimensions):
-        self._state = list(state)
+        self._state = [x if x in (None, self._given_token_indicator) else tuple(x) for x in state]
         self.dimensions = dimensions
 
     @property
@@ -95,6 +97,18 @@ class StateTransformError(Exception):
 
 class StateTransform(ABC):
 
+    def __init__(self, encoded=None):
+        if encoded is not None:
+            self.decode(encoded)
+
+    @abstractmethod
+    def decode(self, encoded):
+        pass
+
+    @abstractmethod
+    def encode(self):
+        pass
+
     @abstractmethod
     def transform_state(self, state):
         pass
@@ -106,8 +120,21 @@ class StateTransform(ABC):
 
 class ChainTransform(StateTransform):
 
-    def __init__(self, transforms):
+    def __init__(self, transforms=None, encoded=None):
+        super().__init__(encoded=encoded)
         self.transforms = transforms
+
+    def decode(self, encoded):
+        self.transforms = list()
+        for encoded_transform in encoded:
+            subtype = getattr(sys.modules[__name__], encoded_transform["transform_type"])
+            self.transforms.append(subtype(encoded=encoded_transform["transform_parameters"]))
+
+    def encode(self):
+        return [{
+            "transform_type": type(transform),
+            "transform_parameters": transform.encode()
+        } for transform in self.transforms]
 
     def transform_state(self, state):
         for transform in self.transforms:
@@ -122,9 +149,18 @@ class ChainTransform(StateTransform):
 
 class RotationTransform(StateTransform):
 
-    def __init__(self, number_of_rotations, dim=4):
+    def __init__(self, number_of_rotations=0, dim=4, encoded=None):
+        super().__init__(encoded=encoded)
         self.dim = dim
         self.number_of_rotations = number_of_rotations
+
+    def decode(self, encoded):
+        self.number_of_rotations, self.dim = encoded.split(",")
+        self.number_of_rotations = int(self.number_of_rotations)
+        self.dim = int(self.dim)
+
+    def encode(self):
+        return "{},{}".format(self.number_of_rotations, self.dim)
 
     def transform_state(self, state):
         encoded_state = state.encode()
@@ -152,9 +188,20 @@ class RotationTransform(StateTransform):
 
 class PermutationTransform(StateTransform):
 
-    def __init__(self, permutation, dimensions):
+    def __init__(self, permutation=None, dimensions=None, encoded=None):
+        super().__init__(encoded=encoded)
         self.dimensions = dimensions
         self.permutation = tuple(permutation)
+
+    def decode(self, encoded):
+        self.dimensions = list(encoded["dimensions"])
+        self.permutation = tuple(encoded["permutation"])
+
+    def encode(self):
+        return {
+            "dimensions": self.dimensions,
+            "permutation": self.permutation
+        }
 
     def transform_state(self, state):
         if self.dimensions != state.dimensions:

@@ -2,8 +2,10 @@ import itertools
 import random
 
 from game.core_elements import State, Action
-from game.database_utils import DBInterface
+from game.database_utils import StateDBInterface, StateCache, StateEquivalencyCache
 from game.players import Player
+
+caches = dict()
 
 
 class Reasoning:
@@ -12,8 +14,15 @@ class Reasoning:
 
     def __init__(self, name, dimensions, alpha=0.1, gamma=0.95, exploration=0.05):
         self._collection = "{}-Memory".format(name)
+        self._transforms_collection = "{}-EquivalentState".format(name)
+        if name not in caches:
+            caches[name] = dict()
+            caches[name][self._collection] = StateCache(database=self._database, collection=self._collection)
+            caches[name][self._transforms_collection] = StateEquivalencyCache(database=self._database,
+                                                                              collection=self._transforms_collection)
+        self._database_interface = caches[name][self._collection]
+        self._equivalency_cache = caches[name][self._transforms_collection]
         self.dimensions = dimensions
-        self._database_interface = DBInterface(self._database, self._collection)
         self.alpha = alpha
         self.gamma = gamma
         self.exploration_probability = exploration
@@ -89,17 +98,23 @@ class Reasoning:
 
     def _disambiguate_state(self, state=None):
         state = state if state is not None else self._internal_state
-        equivalent_states = [(transform, transform.transform_state(state))
-                             for transform in state.iterate_transformations()]
+        equivalent_state, transform = self._equivalency_cache.find_one(state)
+        if equivalent_state is None:
+            equivalent_states = [(transform, transform.transform_state(state))
+                                 for transform in state.iterate_transformations()]
 
-        matched = self._database_interface.find_one_multistate(list(map(lambda x: x[1], equivalent_states)))
+            matched = self._database_interface.find_one_multistate(list(map(lambda x: x[1], equivalent_states)))
 
-        if matched is None:
-            return state, None
+            if matched is None:
+                self._equivalency_cache.insert_data(state, state, None)
+                return state, None
+            else:
+                for transform, transformed_state in equivalent_states:
+                    if transformed_state.key == matched["state_key"]:
+                        self._equivalency_cache.insert_data(state, transformed_state, transform)
+                        return transformed_state, transform
         else:
-            for transform, transformed_state in equivalent_states:
-                if transformed_state.encode() == matched["state"]:
-                    return transformed_state, transform
+            return equivalent_state, transform
 
     def _get_random_action(self):
         return random.choice(self._get_action_values())
